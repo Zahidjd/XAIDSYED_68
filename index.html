@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Mini Mario Clone</title>
+<style>
+    body {
+        margin: 0;
+        overflow: hidden;
+        background: #5c94fc;
+        font-family: Arial, sans-serif;
+    }
+    canvas {
+        display: block;
+    }
+    #scoreBoard {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        color: white;
+        font-size: 20px;
+        font-weight: bold;
+    }
+</style>
+</head>
+<body>
+
+<div id="scoreBoard">Score: 0</div>
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let gravity = 0.8;
+let keys = {};
+let cameraX = 0;
+let score = 0;
+let gameState = "start";
+
+const groundY = 500;
+let worldEnd = 800;
+
+const player = {
+    x: 100,
+    y: groundY - 50,
+    size: 50,
+    dx: 0,
+    dy: 0,
+    speed: 5,
+    onGround: false
+};
+
+let platforms = [];
+let coins = [];
+let enemies = [];
+
+function random(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
+function generateSection() {
+    // Generate platform
+    let platformY = random(300, 420);
+    let platformWidth = random(150, 250);
+    let platform = {
+        x: worldEnd,
+        y: platformY,
+        width: platformWidth,
+        height: 20
+    };
+    platforms.push(platform);
+
+    // Coin on platform
+    coins.push({
+        x: worldEnd + platformWidth / 2,
+        y: platformY - 30,
+        size: 20
+    });
+
+    // Ground coin sometimes
+    if (Math.random() > 0.5) {
+        coins.push({
+            x: worldEnd + random(50, 200),
+            y: groundY - 60,
+            size: 20
+        });
+    }
+
+    // Enemy on ground
+    enemies.push({
+        x: worldEnd + 100,
+        y: groundY - 40,
+        width: 40,
+        height: 40,
+        left: worldEnd + 50,
+        right: worldEnd + 250,
+        dir: 1
+    });
+
+    // Enemy on platform sometimes
+    if (Math.random() > 0.5) {
+        enemies.push({
+            x: worldEnd + 20,
+            y: platformY - 40,
+            width: 40,
+            height: 40,
+            left: worldEnd,
+            right: worldEnd + platformWidth - 40,
+            dir: 1
+        });
+    }
+
+    worldEnd += 350;
+}
+
+// initial sections
+for (let i = 0; i < 5; i++) generateSection();
+
+document.addEventListener("keydown", (e) => {
+
+    if (gameState === "start") {
+        gameState = "playing";
+        return;
+    }
+
+    if (gameState !== "playing") return;
+
+    keys[e.code] = true;
+
+    if (e.code === "ArrowUp" && player.onGround) {
+        player.dy = -18;
+        player.onGround = false;
+    }
+});
+
+document.addEventListener("keyup", (e) => {
+    keys[e.code] = false;
+});
+
+function update() {
+
+    if (gameState !== "playing") return;
+
+    if (keys["ArrowRight"]) player.dx = player.speed;
+    else if (keys["ArrowLeft"]) player.dx = -player.speed;
+    else player.dx = 0;
+
+    player.dy += gravity;
+    player.x += player.dx;
+    player.y += player.dy;
+
+    player.onGround = false;
+
+    // Ground
+    if (player.y + player.size >= groundY) {
+        player.y = groundY - player.size;
+        player.dy = 0;
+        player.onGround = true;
+    }
+
+    // Platform collision
+    platforms.forEach(p => {
+        if (
+            player.x < p.x + p.width &&
+            player.x + player.size > p.x &&
+            player.y + player.size > p.y &&
+            player.y + player.size < p.y + 20 &&
+            player.dy >= 0
+        ) {
+            player.y = p.y - player.size;
+            player.dy = 0;
+            player.onGround = true;
+
+        }
+    });
+
+    // Camera follow
+    if (player.x - cameraX > canvas.width / 2) {
+        cameraX = player.x - canvas.width / 2;
+    }
+
+    // Generate more world ahead
+    if (player.x + canvas.width > worldEnd - 400) {
+        generateSection();
+    }
+
+    // Enemy movement
+    enemies.forEach(enemy => {
+        enemy.x += enemy.dir * 2;
+        if (enemy.x < enemy.left || enemy.x > enemy.right) {
+            enemy.dir *= -1;
+        }
+
+        if (
+            player.x < enemy.x + enemy.width &&
+            player.x + player.size > enemy.x &&
+            player.y < enemy.y + enemy.height &&
+            player.y + player.size > enemy.y
+        )
+         {
+            if (player.dy > 0) {
+                enemy.x = -1000;
+                player.dy = -10;
+                score += 5;
+            } else {
+                
+                resetGame();
+            }
+        }
+        
+    });
+
+    // Coin collection
+    coins = coins.filter(coin => {
+        if (
+            player.x < coin.x + coin.size &&
+            player.x + player.size > coin.x &&
+            player.y < coin.y + coin.size &&
+            player.y + player.size > coin.y
+        ) {
+            score += 5;
+            return false;
+        }
+        return true;
+    });
+
+    // Remove old objects behind camera
+    platforms = platforms.filter(p => p.x + p.width > cameraX - 200);
+    coins = coins.filter(c => c.x > cameraX - 200);
+    enemies = enemies.filter(e => e.x + e.width > cameraX - 200);
+
+    if (score >= 100) gameState = "won";
+
+    document.getElementById("scoreBoard").innerText = "Score: " + score;
+}
+
+function drawPlayer() {
+    ctx.fillStyle = "#c0392b";
+    ctx.fillRect(player.x, player.y, player.size, player.size);
+
+    ctx.fillStyle = "white";
+    ctx.font = "bold 28px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Z", player.x + player.size / 2, player.y + player.size / 2);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameState === "start") {
+        ctx.fillStyle = "white";
+        ctx.font = "bold 40px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("xaidsyed brings you game", canvas.width/2, canvas.height/2);
+        ctx.font = "20px Arial";
+        ctx.fillText("Press Any Key To Start", canvas.width/2, canvas.height/2 + 50);
+        return;
+    }
+
+    if (gameState === "won") {
+        ctx.fillStyle = "white";
+        ctx.font = "bold 50px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("Hey You Won!", canvas.width/2, canvas.height/2);
+        return;
+    }
+
+    ctx.save();
+    ctx.translate(-cameraX, 0);
+
+    ctx.fillStyle = "green";
+    ctx.fillRect(cameraX - 1000, groundY, 5000, 50);
+
+    ctx.fillStyle = "#8e44ad";
+    platforms.forEach(p => ctx.fillRect(p.x, p.y, p.width, p.height));
+
+    drawPlayer();
+
+    ctx.fillStyle = "brown";
+    enemies.forEach(e => ctx.fillRect(e.x, e.y, e.width, e.height));
+
+    ctx.fillStyle = "gold";
+    coins.forEach(c => {
+        ctx.beginPath();
+        ctx.arc(c.x + 10, c.y + 10, 10, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    ctx.restore();
+}
+
+function resetGame() {
+    player.x = 100;
+    player.y = groundY - 50;
+    player.dy = 0;
+    score = 0;
+    cameraX = 0;
+    worldEnd = 800;
+    platforms = [];
+    coins = [];
+    enemies = [];
+    for (let i = 0; i < 5; i++) generateSection();
+    gameState = "start";
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+
+
+
+
+
+
+
+</body>
+</html>
